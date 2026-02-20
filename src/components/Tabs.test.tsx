@@ -4,6 +4,7 @@
 
 import { render, screen, fireEvent } from "@testing-library/react";
 import { Tabs } from "./Tabs";
+import '@testing-library/jest-dom';
 
 describe("Tabs", () => {
   it("renders Dataset, Graders, Experiment tabs", () => {
