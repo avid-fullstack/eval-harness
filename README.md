@@ -1,36 +1,48 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Eval Harness
+
+A lightweight eval harness for running graders against test cases. Built with Next.js.
+
+## User Flow
+
+1. **Create a dataset** – Add test cases with `input` and `expected_output` in the Dataset tab.
+2. **Define graders** – Create evaluation criteria (name, description, rubric) in the Graders tab.
+3. **Run an experiment** – Select a dataset and graders, then click Run in the Experiment tab.
+4. **Review results** – View pass/fail per grader per test case; hover cells to see reasons.
 
 ## Getting Started
 
-First, run the development server:
-
 ```bash
+npm install
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open [http://localhost:3000](http://localhost:3000).
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### PostgreSQL
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Set `DATABASE_URL` in `.env.local` (e.g. `postgresql://user:password@localhost:5432/eval_harness`). Tables are created automatically on first load. Without `DATABASE_URL`, the app runs with in-memory state only (no persistence).
 
-## Learn More
+### Tests
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+npm test
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Tests cover the grade API (mock path), data API (with mocked db), and the Tabs component. No real database or API keys are required.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+## Features
 
-## Deploy on Vercel
+- **Dataset tab**: CRUD for test case rows (input, expected_output)
+- **Graders tab**: CRUD for grader definitions
+- **Experiment tab**: Run selected graders against a dataset
+- **Results table**: Pass/fail per cell; failed cells show reason
+- **SQL persistence**: Data stored in PostgreSQL (set `DATABASE_URL` in `.env.local`)
+- **Aggregate stats**: Pass rate per grader
+- **Export**: Excel (.xlsx) with Overview sheet + Results sheet
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## AI-based grading
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+Set `OPENAI_API_KEY` in `.env.local` to enable AI grading. The `/api/grade` route uses GPT-4o-mini to evaluate responses against the rubric.
+
+- **Without model**: Evaluates whether the expected output is valid for the input (test case validation).
+- **With model**: Enable "Use model to generate answers" in the Experiment tab. The system generates model output for each test case, then grades it against the expected output. Use this to run a full eval loop: generate answers with an LLM, then grade them.
