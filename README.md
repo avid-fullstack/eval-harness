@@ -1,6 +1,6 @@
 # Eval Harness
 
-A lightweight eval harness for running graders against test cases. Built with Next.js.
+TAKE HOME ASSIGNMENT
 
 ## User Flow
 
@@ -38,11 +38,13 @@ Tests cover the grade API (mock path), data API (with mocked db), and the Tabs c
 - **Results table**: Pass/fail per cell; failed cells show reason
 - **SQL persistence**: Data stored in PostgreSQL (set `DATABASE_URL` in `.env.local`)
 - **Aggregate stats**: Pass rate per grader
-- **Export**: Excel (.xlsx) with Overview sheet + Results sheet
+- **Export**: CSV (pass, reason, and generated output per grader)
 
 ## AI-based grading
 
-Set `OPENAI_API_KEY` in `.env.local` to enable AI grading. The `/api/grade` route uses GPT-4o-mini to evaluate responses against the rubric.
+Set `OPENAI_API_KEY` in `.env.local` to enable AI grading. The `/api/grade` route uses GPT-4o-mini in a **generate-then-grade** flow:
 
-- **Without model**: Evaluates whether the expected output is valid for the input (test case validation).
-- **With model**: Enable "Use model to generate answers" in the Experiment tab. The system generates model output for each test case, then grades it against the expected output. Use this to run a full eval loop: generate answers with an LLM, then grade them.
+1. **Generate**: The model produces an answer from the test case input.
+2. **Grade**: The model compares expected output vs generated output against the rubric and returns pass/fail with a reason.
+
+Without the API key, the app uses a mock grader (no generation; pass/fail based on input and expected output presence).

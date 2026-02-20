@@ -7,25 +7,23 @@ interface GradeRequest {
   expected_output: string;
   rubric: string;
   graderName?: string;
-  /** Model output to grade. */
+  /** If omitted and AI available: generate from input, then grade expected vs generated. */
   actual_output?: string;
 }
 
-// Checking whether AI grading is available.
 function useAiGrading(): boolean {
   return !!process.env.OPENAI_API_KEY;
 }
 
-// Evaluating output against the rubric. AI when key set; mock otherwise.
+// Generate-then-grade: generate answer from input, then grade expected vs generated. When actual_output is provided, only grade.
 export async function POST(req: Request) {
   try {
     const body: GradeRequest = await req.json();
-    const { input, expected_output, rubric, graderName, actual_output } = body;
+    const { input, expected_output, rubric, graderName, actual_output: providedOutput } = body;
 
     const hasInput = (input ?? "").trim().length > 0;
     const hasExpected = (expected_output ?? "").trim().length > 0;
 
-    // Falling back to mock grader when OPENAI_API_KEY is unset.
     if (!useAiGrading()) {
       const pass = hasInput && hasExpected;
       const reason = pass
@@ -36,9 +34,18 @@ export async function POST(req: Request) {
       return NextResponse.json({ pass, reason });
     }
 
-    // Running AI-based grading with the rubric.
-    const outputToGrade = actual_output ?? expected_output;
-    const isComparing = actual_output !== undefined;
+    const model = openai("gpt-4o-mini");
+    let actual_output: string | undefined = providedOutput;
+
+    if (actual_output === undefined) {
+      const { text } = await generateText({
+        model,
+        prompt: (input ?? "").trim() || "(no input)",
+      });
+      actual_output = text?.trim() ?? "";
+    }
+
+    const outputToGrade = actual_output;
 
     const systemPrompt = `You are an evaluation assistant. Grade the response against the rubric. Reply only with valid JSON in this exact format:
 {"pass": true|false, "reason": "brief explanation"}
@@ -51,43 +58,39 @@ Rules for "reason":
 Rubric:
 ${rubric || "Evaluate correctness and completeness."}`;
 
-    const userPrompt = isComparing
-      ? `Input: ${input ?? "(none)"}
+    const userPrompt = `Input: ${input ?? "(none)"}
 
 Expected output: ${expected_output ?? "(none)"}
 
 Actual output to grade: ${outputToGrade ?? "(none)"}
 
-Does the actual output satisfy the expected output according to the rubric? Reply with JSON only.`
-      : `Input: ${input ?? "(none)"}
-
-Expected output: ${expected_output ?? "(none)"}
-
-Is this expected output a valid, correct answer for the input? Reply with JSON only.`;
+Does the actual output satisfy the expected output according to the rubric? Reply with JSON only.`;
 
     const { text } = await generateText({
-      model: openai("gpt-4o-mini"),
+      model,
       system: systemPrompt,
       prompt: userPrompt,
     });
 
-    // Parsing the JSON response. Handling markdown code blocks from the model.
     const jsonMatch = text.match(/\{[\s\S]*\}/);
     const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
 
     if (parsed && typeof parsed.pass === "boolean" && typeof parsed.reason === "string") {
-      return NextResponse.json({
+      const res: { pass: boolean; reason: string; generated_output?: string } = {
         pass: parsed.pass,
         reason: parsed.reason.trim(),
-      });
+      };
+      if (actual_output !== undefined && providedOutput === undefined) res.generated_output = actual_output;
+      return NextResponse.json(res);
     }
 
-    // Falling back when the model returns invalid JSON.
     const pass = hasInput && hasExpected;
-    return NextResponse.json({
+    const fallback: { pass: boolean; reason: string; generated_output?: string } = {
       pass,
       reason: parsed?.reason ?? `AI response unclear. Raw: ${text.slice(0, 200)}`,
-    });
+    };
+    if (actual_output !== undefined && providedOutput === undefined) fallback.generated_output = actual_output;
+    return NextResponse.json(fallback);
   } catch (e) {
     console.error("Grade API error:", e);
     return NextResponse.json(

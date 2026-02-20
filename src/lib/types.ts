@@ -17,6 +17,8 @@ export interface Grader {
 export interface GradeResult {
   pass: boolean;
   reason: string;
+  /** Model-generated output when grade API also generates (generate+grade flow). */
+  generated_output?: string;
 }
 
 /** Stored result for one test case graded by one grader. */
@@ -25,6 +27,8 @@ export interface ExperimentResult {
   graderId: string;
   pass: boolean;
   reason: string;
+  /** Grader-generated output when using generate-then-grade flow. */
+  generated_output?: string;
 }
 
 /** Dataset: named collection of test cases. */

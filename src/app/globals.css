@@ -5,6 +5,7 @@
 
 :root {
   --background: #0d0d0c;
+  --bg: var(--background);
   --surface: #1a1a18;
   --border: #2d2d2a;
   --muted: #6b6b66;

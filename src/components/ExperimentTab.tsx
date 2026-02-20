@@ -59,11 +59,12 @@ export function ExperimentTab() {
               graderId,
               pass: data.pass,
               reason: data.reason ?? "",
+              ...(data.generated_output !== undefined && { generated_output: data.generated_output }),
             });
           }
         }
       }
-      setResults(newResults);
+      await setResults(newResults);
     } finally {
       setRunning(false);
     }
@@ -238,10 +239,13 @@ function ResultsTable({
   );
 }
 
-// Single result cell. Showing reason for failed cases.
+// Single result cell. Pass/fail badge; reason on hover (per acceptance criteria).
 function ResultCell({ pass, reason }: { pass: boolean; reason: string }) {
   return (
-    <div className="flex flex-col gap-0.5 items-center text-center min-w-[80px]">
+    <div
+      className="flex flex-col gap-0.5 items-center text-center min-w-[80px] cursor-default"
+      title={reason || (pass ? "Pass" : "Fail")}
+    >
       <span
         className={`
           inline-block px-2 py-0.5 rounded text-xs font-medium
@@ -251,7 +255,7 @@ function ResultCell({ pass, reason }: { pass: boolean; reason: string }) {
         {pass ? "Pass" : "Fail"}
       </span>
       {!pass && reason && (
-        <span className="text-[10px] text-[var(--muted)] leading-tight max-w-[180px]" title={reason}>
+        <span className="text-[10px] text-[var(--muted)] leading-tight max-w-[180px]">
           {reason}
         </span>
       )}
@@ -289,7 +293,7 @@ function StatsBar({
   );
 }
 
-// Export
+// Export as CSV.
 function ExportButton({
   dataset,
   graders,
@@ -304,52 +308,37 @@ function ExportButton({
       (r) => r.testCaseId === testCaseId && r.graderId === graderId
     );
 
-  const downloadExcel = () => {
-    // Dynamic import to avoid loading xlsx on initial page load.
-    import("xlsx").then((XLSX) => {
-      const overviewRows = graders.map((g) => {
-        const graderResults = results.filter((r) => r.graderId === g.id);
-        const passCount = graderResults.filter((r) => r.pass).length;
-        const total = graderResults.length;
-        const rate = total > 0 ? ((passCount / total) * 100).toFixed(1) : "0";
-        return {
-          Grader: g.name,
-          Pass: passCount,
-          Total: total,
-          "Pass %": rate,
-        };
-      });
-      const overviewSheet = XLSX.utils.json_to_sheet(overviewRows);
+  const escapeCsv = (s: string) => {
+    const t = String(s ?? "").replace(/"/g, '""');
+    return t.includes(",") || t.includes('"') || t.includes("\n") ? `"${t}"` : t;
+  };
 
-      const graderHeaders = graders.flatMap((g) => [
-        `${g.name}_pass`,
-        `${g.name}_reason`,
-      ]);
-      const resultsHeaders = ["input", "expected_output", ...graderHeaders];
-      const resultsRows = dataset.testCases.map((tc) => {
-        const row: Record<string, string> = {
-          input: tc.input ?? "",
-          expected_output: tc.expected_output ?? "",
-        };
-        for (const g of graders) {
+  const downloadCsv = () => {
+    const headers = ["input", "expected_output", ...graders.flatMap((g) => [`${g.name}_pass`, `${g.name}_reason`, `${g.name}_generated`])];
+    const rows = dataset.testCases.map((tc) => {
+      const row = [
+        escapeCsv(tc.input ?? ""),
+        escapeCsv(tc.expected_output ?? ""),
+        ...graders.flatMap((g) => {
           const r = getResult(tc.id, g.id);
-          row[`${g.name}_pass`] = r?.pass ? "pass" : "fail";
-          row[`${g.name}_reason`] = r?.reason ?? "";
-        }
-        return row;
-      });
-      const resultsSheet = XLSX.utils.json_to_sheet(resultsRows);
-
-      const wb = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(wb, overviewSheet, "Overview");
-      XLSX.utils.book_append_sheet(wb, resultsSheet, "Results");
-      XLSX.writeFile(wb, "eval-results.xlsx");
+          return [escapeCsv(r?.pass ? "pass" : "fail"), escapeCsv(r?.reason ?? ""), escapeCsv(r?.generated_output ?? "")];
+        }),
+      ];
+      return row.join(",");
     });
+    const csv = [headers.join(","), ...rows].join("\r\n");
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "eval-results.csv";
+    a.click();
+    URL.revokeObjectURL(url);
   };
 
   return (
     <button
-      onClick={downloadExcel}
+      onClick={downloadCsv}
       className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] text-sm hover:bg-[var(--surface)] transition-colors"
     >
       <Download size={16} /> Export

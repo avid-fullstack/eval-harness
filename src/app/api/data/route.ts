@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { loadData, saveData } from "@/lib/db";
+import { isDatabaseConfigured, loadData, saveData } from "@/lib/db";
 
 // Loading all data from PostgreSQL.
 export async function GET() {
@@ -15,8 +15,14 @@ export async function GET() {
   }
 }
 
-// Saving full state to PostgreSQL.
+// Saving full state to PostgreSQL. Returns 503 when DATABASE_URL is not set.
 export async function POST(req: Request) {
+  if (!isDatabaseConfigured()) {
+    return NextResponse.json(
+      { error: "Database not configured. Set DATABASE_URL in .env.local to persist data." },
+      { status: 503 }
+    );
+  }
   try {
     const body = await req.json();
     const data = {

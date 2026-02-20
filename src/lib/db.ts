@@ -7,10 +7,14 @@ const pool =
     ? new Pool({ connectionString: process.env.DATABASE_URL })
     : null;
 
+export function isDatabaseConfigured(): boolean {
+  return pool != null;
+}
+
 export interface DataState {
   datasets: { id: string; name: string; testCases: { id: string; input: string; expected_output: string }[] }[];
   graders: { id: string; name: string; description: string; rubric: string }[];
-  results: { testCaseId: string; graderId: string; pass: boolean; reason: string }[];
+  results: { testCaseId: string; graderId: string; pass: boolean; reason: string; generated_output?: string }[];
 }
 
 // Creating tables if they do not exist. Avoid: changing schema without migration.
@@ -39,6 +43,7 @@ async function ensureSchema(): Promise<void> {
       grader_id TEXT NOT NULL,
       pass SMALLINT NOT NULL,
       reason TEXT NOT NULL,
+      generated_output TEXT,
       PRIMARY KEY (test_case_id, grader_id),
       FOREIGN KEY (test_case_id) REFERENCES test_cases(id) ON DELETE CASCADE,
       FOREIGN KEY (grader_id) REFERENCES graders(id) ON DELETE CASCADE
@@ -46,6 +51,9 @@ async function ensureSchema(): Promise<void> {
     CREATE INDEX IF NOT EXISTS idx_test_cases_dataset ON test_cases(dataset_id);
     CREATE INDEX IF NOT EXISTS idx_results_test_case ON results(test_case_id);
     CREATE INDEX IF NOT EXISTS idx_results_grader ON results(grader_id);
+  `);
+  await pool.query(`
+    ALTER TABLE results ADD COLUMN IF NOT EXISTS generated_output TEXT;
   `);
 }
 
@@ -64,8 +72,8 @@ export async function loadData(): Promise<DataState> {
     pool.query<{ id: string; name: string; description: string; rubric: string }>(
       "SELECT id, name, description, rubric FROM graders ORDER BY name"
     ),
-    pool.query<{ test_case_id: string; grader_id: string; pass: number; reason: string }>(
-      "SELECT test_case_id, grader_id, pass, reason FROM results"
+    pool.query<{ test_case_id: string; grader_id: string; pass: number; reason: string; generated_output: string | null }>(
+      "SELECT test_case_id, grader_id, pass, reason, generated_output FROM results"
     ),
   ]);
 
@@ -98,26 +106,37 @@ export async function loadData(): Promise<DataState> {
       graderId: r.grader_id,
       pass: r.pass === 1,
       reason: r.reason,
+      ...(r.generated_output != null && r.generated_output !== "" && { generated_output: r.generated_output }),
     })),
   };
 }
 
-// Saving full state to the database. Replace-all strategy: delete then insert.
+// Saving state incrementally: upsert then delete only what is no longer in payload. Keeps unmodified data.
 export async function saveData(data: DataState): Promise<void> {
   if (!pool) return;
+  await ensureSchema();
   const client = await pool.connect();
   try {
     await client.query("BEGIN");
-    await client.query("DELETE FROM results");
-    await client.query("DELETE FROM test_cases");
-    await client.query("DELETE FROM datasets");
-    await client.query("DELETE FROM graders");
+
+    const datasetIds = data.datasets.map((d) => d.id);
+    const tcIds = data.datasets.flatMap((d) => d.testCases.map((tc) => tc.id));
+    const graderIds = data.graders.map((g) => g.id);
+    const resultPairs = data.results.map((r) => [r.testCaseId, r.graderId] as const);
 
     for (const d of data.datasets) {
       await client.query(
         "INSERT INTO datasets (id, name) VALUES ($1, $2) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name",
         [d.id, d.name]
       );
+    }
+    if (datasetIds.length > 0) {
+      await client.query("DELETE FROM datasets WHERE id NOT IN (SELECT unnest($1::text[]))", [datasetIds]);
+    } else {
+      await client.query("DELETE FROM datasets");
+    }
+
+    for (const d of data.datasets) {
       for (const tc of d.testCases) {
         await client.query(
           "INSERT INTO test_cases (id, dataset_id, input, expected_output) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET dataset_id = EXCLUDED.dataset_id, input = EXCLUDED.input, expected_output = EXCLUDED.expected_output",
@@ -125,18 +144,41 @@ export async function saveData(data: DataState): Promise<void> {
         );
       }
     }
+    if (tcIds.length > 0) {
+      await client.query("DELETE FROM test_cases WHERE id NOT IN (SELECT unnest($1::text[]))", [tcIds]);
+    } else {
+      await client.query("DELETE FROM test_cases");
+    }
+
     for (const g of data.graders) {
       await client.query(
         "INSERT INTO graders (id, name, description, rubric) VALUES ($1, $2, $3, $4) ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description, rubric = EXCLUDED.rubric",
         [g.id, g.name, g.description ?? "", g.rubric ?? ""]
       );
     }
+    if (graderIds.length > 0) {
+      await client.query("DELETE FROM graders WHERE id NOT IN (SELECT unnest($1::text[]))", [graderIds]);
+    } else {
+      await client.query("DELETE FROM graders");
+    }
+
     for (const r of data.results) {
       await client.query(
-        "INSERT INTO results (test_case_id, grader_id, pass, reason) VALUES ($1, $2, $3, $4) ON CONFLICT (test_case_id, grader_id) DO UPDATE SET pass = EXCLUDED.pass, reason = EXCLUDED.reason",
-        [r.testCaseId, r.graderId, r.pass ? 1 : 0, r.reason ?? ""]
+        "INSERT INTO results (test_case_id, grader_id, pass, reason, generated_output) VALUES ($1, $2, $3, $4, $5) ON CONFLICT (test_case_id, grader_id) DO UPDATE SET pass = EXCLUDED.pass, reason = EXCLUDED.reason, generated_output = EXCLUDED.generated_output",
+        [r.testCaseId, r.graderId, r.pass ? 1 : 0, r.reason ?? "", r.generated_output ?? null]
       );
     }
+    if (resultPairs.length > 0) {
+      const tcIdsForResults = resultPairs.map(([tc]) => tc);
+      const gIdsForResults = resultPairs.map(([, g]) => g);
+      await client.query(
+        "DELETE FROM results WHERE (test_case_id, grader_id) NOT IN (SELECT unnest($1::text[]) AS tc, unnest($2::text[]) AS g)",
+        [tcIdsForResults, gIdsForResults]
+      );
+    } else {
+      await client.query("DELETE FROM results");
+    }
+
     await client.query("COMMIT");
   } catch (e) {
     await client.query("ROLLBACK");

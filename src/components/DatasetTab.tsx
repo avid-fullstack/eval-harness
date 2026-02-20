@@ -22,15 +22,38 @@ export function DatasetTab() {
   );
   const [editingRow, setEditingRow] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const selected = datasets.find((d) => d.id === selectedId) ?? datasets[0];
 
-  // Adding a dataset and selecting it.
-  const handleAddDataset = () => {
+  const handleAddDataset = async () => {
     const name = newName.trim() || "New Dataset";
-    const ds = addDataset(name);
-    setSelectedId(ds.id);
-    setNewName("");
+    setError(null);
+    setSaving(true);
+    try {
+      const ds = await addDataset(name);
+      setSelectedId(ds.id);
+      setNewName("");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to save");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDeleteDataset = async () => {
+    if (!selected) return;
+    setError(null);
+    setSaving(true);
+    try {
+      await deleteDataset(selected.id);
+      setSelectedId(datasets.find((d) => d.id !== selected.id)?.id ?? null);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete");
+    } finally {
+      setSaving(false);
+    }
   };
 
   return (
@@ -59,15 +82,20 @@ export function DatasetTab() {
           />
           <button
             onClick={handleAddDataset}
-            className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--accent)] text-[var(--bg)] font-medium hover:bg-[var(--accent-dim)] transition-colors"
+            disabled={saving}
+            className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--accent)] text-[var(--bg)] font-medium hover:bg-[var(--accent-dim)] disabled:opacity-50 transition-colors"
           >
-            <Plus size={16} /> Add
+            <Plus size={16} /> {saving ? "Saving…" : "Add"}
           </button>
         </div>
+        {error && (
+          <span className="text-sm text-[var(--fail)]">{error}</span>
+        )}
         {selected && (
           <button
-            onClick={() => deleteDataset(selected.id)}
-            className="text-[var(--fail)] hover:underline text-sm ml-auto"
+            onClick={handleDeleteDataset}
+            disabled={saving}
+            className="text-[var(--fail)] hover:underline text-sm ml-auto disabled:opacity-50"
           >
             Delete dataset
           </button>
@@ -94,19 +122,47 @@ export function DatasetTab() {
                       key={tc.id}
                       testCase={tc}
                       editing={editingRow === tc.id}
+                      disabled={saving}
                       onEdit={() => setEditingRow(tc.id)}
-                      onSave={(updates) => {
-                        updateTestCase(selected.id, tc.id, updates);
-                        setEditingRow(null);
+                      onSave={async (updates) => {
+                        setError(null);
+                        setSaving(true);
+                        try {
+                          await updateTestCase(selected.id, tc.id, updates);
+                          setEditingRow(null);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "Failed to save");
+                        } finally {
+                          setSaving(false);
+                        }
                       }}
                       onCancel={() => setEditingRow(null)}
-                      onDelete={() => deleteTestCase(selected.id, tc.id)}
+                      onDelete={async () => {
+                        setError(null);
+                        setSaving(true);
+                        try {
+                          await deleteTestCase(selected.id, tc.id);
+                        } catch (e) {
+                          setError(e instanceof Error ? e.message : "Failed to delete");
+                        } finally {
+                          setSaving(false);
+                        }
+                      }}
                     />
                   ))}
                   <AddRow
-                    onAdd={(tc) => {
-                      addTestCase(selected.id, tc);
+                    onAdd={async (tc) => {
+                      setError(null);
+                      setSaving(true);
+                      try {
+                        await addTestCase(selected.id, tc);
+                      } catch (e) {
+                        setError(e instanceof Error ? e.message : "Failed to save");
+                      } finally {
+                        setSaving(false);
+                      }
                     }}
+                    disabled={saving}
                   />
                 </tbody>
               </table>
@@ -126,6 +182,7 @@ export function DatasetTab() {
 function TestCaseRow({
   testCase,
   editing,
+  disabled,
   onEdit,
   onSave,
   onCancel,
@@ -133,10 +190,11 @@ function TestCaseRow({
 }: {
   testCase: TestCase;
   editing: boolean;
+  disabled?: boolean;
   onEdit: () => void;
-  onSave: (updates: Partial<TestCase>) => void;
+  onSave: (updates: Partial<TestCase>) => void | Promise<void>;
   onCancel: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
 }) {
   const [input, setInput] = useState(testCase.input);
   const [expected, setExpected] = useState(testCase.expected_output);
@@ -163,13 +221,15 @@ function TestCaseRow({
           <div className="flex gap-1">
             <button
               onClick={() => onSave({ input, expected_output: expected })}
-              className="p-1.5 rounded text-[var(--pass)] hover:bg-[var(--surface)]"
+              disabled={disabled}
+              className="p-1.5 rounded text-[var(--pass)] hover:bg-[var(--surface)] disabled:opacity-50"
             >
               <Check size={16} />
             </button>
             <button
               onClick={onCancel}
-              className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)]"
+              disabled={disabled}
+              className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] disabled:opacity-50"
             >
               <X size={16} />
             </button>
@@ -191,13 +251,15 @@ function TestCaseRow({
         <div className="flex gap-1">
           <button
             onClick={onEdit}
-            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+            disabled={disabled}
+            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
             <Pencil size={14} />
           </button>
           <button
             onClick={onDelete}
-            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fail)]"
+            disabled={disabled}
+            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fail)] disabled:opacity-50"
           >
             <Trash2 size={14} />
           </button>
@@ -208,7 +270,13 @@ function TestCaseRow({
 }
 
 // Inline form for adding a new test case row.
-function AddRow({ onAdd }: { onAdd: (tc: Omit<TestCase, "id">) => void }) {
+function AddRow({
+  onAdd,
+  disabled,
+}: {
+  onAdd: (tc: Omit<TestCase, "id">) => void | Promise<void>;
+  disabled?: boolean;
+}) {
   const [input, setInput] = useState("");
   const [expected, setExpected] = useState("");
   const [open, setOpen] = useState(false);
@@ -219,7 +287,8 @@ function AddRow({ onAdd }: { onAdd: (tc: Omit<TestCase, "id">) => void }) {
         <td colSpan={3} className="px-3 py-2">
           <button
             onClick={() => setOpen(true)}
-            className="flex items-center gap-2 text-[var(--muted)] hover:text-[var(--accent)] text-sm"
+            disabled={disabled}
+            className="flex items-center gap-2 text-[var(--muted)] hover:text-[var(--accent)] text-sm disabled:opacity-50"
           >
             <Plus size={16} /> Add row
           </button>
@@ -228,9 +297,8 @@ function AddRow({ onAdd }: { onAdd: (tc: Omit<TestCase, "id">) => void }) {
     );
   }
 
-  // Submitting the new row and resetting the form.
-  const handleAdd = () => {
-    onAdd({ input: input.trim(), expected_output: expected.trim() });
+  const handleAdd = async () => {
+    await onAdd({ input: input.trim(), expected_output: expected.trim() });
     setInput("");
     setExpected("");
     setOpen(false);
@@ -259,7 +327,8 @@ function AddRow({ onAdd }: { onAdd: (tc: Omit<TestCase, "id">) => void }) {
         <div className="flex gap-1">
           <button
             onClick={handleAdd}
-            className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--pass)] text-[var(--bg)] text-sm font-medium"
+            disabled={disabled}
+            className="flex items-center gap-1 px-2 py-1 rounded bg-[var(--pass)] text-[var(--bg)] text-sm font-medium disabled:opacity-50"
           >
             <Check size={14} /> Add
           </button>
@@ -269,7 +338,8 @@ function AddRow({ onAdd }: { onAdd: (tc: Omit<TestCase, "id">) => void }) {
               setInput("");
               setExpected("");
             }}
-            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)]"
+            disabled={disabled}
+            className="p-1.5 rounded text-[var(--muted)] hover:bg-[var(--surface)] disabled:opacity-50"
           >
             <X size={16} />
           </button>

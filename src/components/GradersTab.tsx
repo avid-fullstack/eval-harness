@@ -10,6 +10,8 @@ export function GradersTab() {
   const { graders, addGrader, updateGrader, deleteGrader } = useStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   return (
     <div className="flex flex-col h-full">
@@ -17,11 +19,15 @@ export function GradersTab() {
         <h2 className="text-lg font-medium">Grader definitions</h2>
         <button
           onClick={() => setShowAdd(true)}
-          className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--accent)] text-[var(--bg)] font-medium hover:bg-[var(--accent-dim)] transition-colors"
+          disabled={saving}
+          className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--accent)] text-[var(--bg)] font-medium hover:bg-[var(--accent-dim)] disabled:opacity-50 transition-colors"
         >
           <Plus size={16} /> Add grader
         </button>
       </div>
+      {error && (
+        <div className="px-4 py-2 text-sm text-[var(--fail)]">{error}</div>
+      )}
 
       <div className="flex-1 overflow-auto p-4 space-y-4">
         {graders.map((grader) => (
@@ -29,26 +35,54 @@ export function GradersTab() {
             key={grader.id}
             grader={grader}
             editing={editingId === grader.id}
+            disabled={saving}
             onEdit={() => setEditingId(grader.id)}
-            onSave={(updates) => {
-              updateGrader(grader.id, updates);
-              setEditingId(null);
+            onSave={async (updates) => {
+              setError(null);
+              setSaving(true);
+              try {
+                await updateGrader(grader.id, updates);
+                setEditingId(null);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed to save");
+              } finally {
+                setSaving(false);
+              }
             }}
             onCancel={() => setEditingId(null)}
-            onDelete={() => deleteGrader(grader.id)}
+            onDelete={async () => {
+              setError(null);
+              setSaving(true);
+              try {
+                await deleteGrader(grader.id);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed to delete");
+              } finally {
+                setSaving(false);
+              }
+            }}
           />
         ))}
         {showAdd && (
           <GraderCard
             grader={{ id: "", name: "", description: "", rubric: "" }}
             editing
-            onSave={(updates) => {
-              addGrader({
-                name: updates.name ?? "",
-                description: updates.description ?? "",
-                rubric: updates.rubric ?? "",
-              });
-              setShowAdd(false);
+            disabled={saving}
+            onSave={async (updates) => {
+              setError(null);
+              setSaving(true);
+              try {
+                await addGrader({
+                  name: updates.name ?? "",
+                  description: updates.description ?? "",
+                  rubric: updates.rubric ?? "",
+                });
+                setShowAdd(false);
+              } catch (e) {
+                setError(e instanceof Error ? e.message : "Failed to save");
+              } finally {
+                setSaving(false);
+              }
             }}
             onCancel={() => setShowAdd(false)}
             onEdit={() => {}}
@@ -69,6 +103,7 @@ export function GradersTab() {
 function GraderCard({
   grader,
   editing,
+  disabled,
   onEdit,
   onSave,
   onCancel,
@@ -76,10 +111,11 @@ function GraderCard({
 }: {
   grader: Grader;
   editing: boolean;
+  disabled?: boolean;
   onEdit: () => void;
-  onSave: (updates: Partial<Grader>) => void;
+  onSave: (updates: Partial<Grader>) => void | Promise<void>;
   onCancel: () => void;
-  onDelete: () => void;
+  onDelete: () => void | Promise<void>;
 }) {
   const [name, setName] = useState(grader.name);
   const [description, setDescription] = useState(grader.description);
@@ -116,20 +152,23 @@ function GraderCard({
         <div className="flex gap-2 mt-4">
           <button
             onClick={() => onSave({ name, description, rubric })}
-            className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--pass)] text-[var(--bg)] font-medium"
+            disabled={disabled}
+            className="flex items-center gap-2 px-3 py-2 rounded bg-[var(--pass)] text-[var(--bg)] font-medium disabled:opacity-50"
           >
             <Check size={14} /> {isNew ? "Create" : "Save"}
           </button>
           <button
             onClick={onCancel}
-            className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)]"
+            disabled={disabled}
+            className="flex items-center gap-2 px-3 py-2 rounded border border-[var(--border)] text-[var(--muted)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
             <X size={14} /> Cancel
           </button>
           {!isNew && (
             <button
               onClick={onDelete}
-              className="ml-auto text-[var(--fail)] hover:underline text-sm"
+              disabled={disabled}
+              className="ml-auto text-[var(--fail)] hover:underline text-sm disabled:opacity-50"
             >
               Delete
             </button>
@@ -156,13 +195,15 @@ function GraderCard({
         <div className="flex gap-1 shrink-0">
           <button
             onClick={onEdit}
-            className="p-2 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)]"
+            disabled={disabled}
+            className="p-2 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--foreground)] disabled:opacity-50"
           >
             <Pencil size={16} />
           </button>
           <button
             onClick={onDelete}
-            className="p-2 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fail)]"
+            disabled={disabled}
+            className="p-2 rounded text-[var(--muted)] hover:bg-[var(--surface)] hover:text-[var(--fail)] disabled:opacity-50"
           >
             <Trash2 size={16} />
           </button>

@@ -7,7 +7,9 @@ import { GET, POST } from "@/app/api/data/route";
 
 const mockLoadData = jest.fn();
 const mockSaveData = jest.fn();
+const mockIsDatabaseConfigured = jest.fn(() => true);
 jest.mock("../../../lib/db", () => ({
+  isDatabaseConfigured: () => mockIsDatabaseConfigured(),
   loadData: (...args: unknown[]) => mockLoadData(...args),
   saveData: (...args: unknown[]) => mockSaveData(...args),
 }));
@@ -90,5 +92,22 @@ describe("POST /api/data", () => {
     expect(res.status).toBe(500);
     const data = await res.json();
     expect(data.error).toBe("Failed to save data");
+  });
+
+  it("returns 503 when database is not configured", async () => {
+    mockSaveData.mockClear();
+    mockIsDatabaseConfigured.mockReturnValueOnce(false);
+
+    const req = new Request("http://localhost/api/data", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ datasets: [], graders: [], results: [] }),
+    });
+
+    const res = await POST(req);
+    expect(res.status).toBe(503);
+    const data = await res.json();
+    expect(data.error).toMatch(/not configured/i);
+    expect(mockSaveData).not.toHaveBeenCalled();
   });
 });
