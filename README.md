@@ -2,7 +2,7 @@
 
 MEMORANG - TAKE HOME ASSIGNMENT
 
-## What's this? - Lightweight eval harness for running graders against test cases. Create datasets, define graders with rubrics, run experiments, and review pass/fail results.
+**What's this?** - Lightweight eval harness for running graders against test cases. Create datasets, define graders with rubrics, run experiments, and review pass/fail results.
 
 ## User Flow
 
