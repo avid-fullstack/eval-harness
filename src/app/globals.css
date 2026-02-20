@@ -1,8 +1,18 @@
 @import "tailwindcss";
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #0d0d0c;
+  --surface: #1a1a18;
+  --border: #2d2d2a;
+  --muted: #6b6b66;
+  --foreground: #ededeb;
+  --accent: #d4a84b;
+  --accent-dim: #b8923d;
+  --pass: #4ade80;
+  --fail: #f87171;
 }
 
 @theme inline {
@@ -22,5 +32,10 @@
 body {
   background: var(--background);
   color: var(--foreground);
-  font-family: Arial, Helvetica, sans-serif;
+  font-family: var(--font-geist-sans), system-ui, sans-serif;
+  font-feature-settings: "rlig" 1, "calt" 1;
+}
+
+.font-mono {
+  font-family: var(--font-geist-mono), ui-monospace, monospace;
 }
