@@ -6,11 +6,16 @@ import { Play, Download } from "lucide-react";
 import { useStore } from "@/lib/store";
 import type { ExperimentResult } from "@/lib/types";
 
+function sameGraderSet(a: Set<string>, b: Set<string>): boolean {
+  if (a.size !== b.size) return false;
+  for (const id of a) if (!b.has(id)) return false;
+  return true;
+}
+
 export function ExperimentTab() {
   const {
     datasets,
     graders,
-    results,
     getDataset,
     getGrader,
     setResults,
@@ -18,6 +23,9 @@ export function ExperimentTab() {
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedGraderIds, setSelectedGraderIds] = useState<Set<string>>(new Set());
   const [running, setRunning] = useState(false);
+  const [runResults, setRunResults] = useState<ExperimentResult[]>([]);
+  const [lastRunDatasetId, setLastRunDatasetId] = useState<string>("");
+  const [lastRunGraderIds, setLastRunGraderIds] = useState<Set<string>>(new Set());
 
   const selectedDataset = selectedDatasetId
     ? getDataset(selectedDatasetId)
@@ -32,7 +40,6 @@ export function ExperimentTab() {
     });
   };
 
-  // Running all graders against all test cases.
   const runExperiment = async () => {
     if (!selectedDataset || selectedGraderIds.size === 0) return;
     setRunning(true);
@@ -64,6 +71,9 @@ export function ExperimentTab() {
           }
         }
       }
+      setRunResults(newResults);
+      setLastRunDatasetId(selectedDatasetId);
+      setLastRunGraderIds(new Set(selectedGraderIds));
       await setResults(newResults);
     } finally {
       setRunning(false);
@@ -71,7 +81,10 @@ export function ExperimentTab() {
   };
 
   const selectedGraders = graders.filter((g) => selectedGraderIds.has(g.id));
-  const hasResults = results.length > 0;
+  const showResultsTable =
+    runResults.length > 0 &&
+    selectedDatasetId === lastRunDatasetId &&
+    sameGraderSet(selectedGraderIds, lastRunGraderIds);
 
   return (
     <div className="flex flex-col h-full">
@@ -129,27 +142,22 @@ export function ExperimentTab() {
       </div>
 
       <div className="flex-1 overflow-auto p-4 space-y-4">
-        {hasResults && selectedDataset ? (
+        {showResultsTable && selectedDataset ? (
           <>
-            <StatsBar results={results} graders={selectedGraders} />
+            <StatsBar results={runResults} graders={selectedGraders} />
             <div className="flex justify-end">
               <ExportButton
                 dataset={selectedDataset}
                 graders={selectedGraders}
-                results={results}
+                results={runResults}
               />
             </div>
             <ResultsTable
               dataset={selectedDataset}
               graders={selectedGraders}
-              results={results}
+              results={runResults}
             />
           </>
-        ) : hasResults && !selectedDataset ? (
-          <div className="text-center text-[var(--muted)] py-16">
-            The dataset for these results is no longer available. Select a dataset
-            and run again to see results.
-          </div>
         ) : (
           <div className="text-center text-[var(--muted)] py-16">
             Select a dataset and graders, then click Run to evaluate.

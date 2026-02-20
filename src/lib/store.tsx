@@ -229,8 +229,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   const setResults = useCallback(async (results: ExperimentResult[]) => {
     const s = stateRef.current;
     const next = { ...s, results };
-    await persistToDb(next);
     setState(next);
+    await persistToDb(next);
   }, []);
 
   const getDataset = useCallback(
