@@ -40,6 +40,16 @@ The app uses standard PostgreSQL (`pg`), so Supabase works without code changes.
    ```
 7. Restart the dev server (`npm run dev`). Tables are created automatically when the app first loads or saves data.
 
+### Seeding mock data
+
+With `DATABASE_URL` set, run:
+
+```bash
+npm run seed
+```
+
+This creates **7 datasets** (Math facts, Geography, Vocabulary, Logic, Science, History, General knowledge), each with **16 unique questions** and a mix of `expected_output`: correct and concise, correct but verbose (Strict/Format graders may fail these), and incorrect — so you get pass/fail variety and cases where the answer is right but some graders fail it. **5 graders** (Correctness, Strict, Lenient, Format, Completeness). Safe to run multiple times (upserts).
+
 ### Tests
 
 ```bash
