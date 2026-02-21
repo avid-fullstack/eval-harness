@@ -6,11 +6,20 @@ import { Tabs } from "@/components/Tabs";
 import { DatasetTab } from "@/components/DatasetTab";
 import { GradersTab } from "@/components/GradersTab";
 import { ExperimentTab } from "@/components/ExperimentTab";
+import { useStore } from "@/lib/store";
 
 type TabId = "dataset" | "graders" | "experiment";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("dataset");
+  const { isHydrating, isSaving, isExperimentRunning } = useStore();
+  const busy = isHydrating || isSaving || isExperimentRunning;
+
+  const busyMessage = isHydrating
+    ? "Loading…"
+    : isExperimentRunning
+      ? "Running experiment…"
+      : "Saving…";
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg)]">
@@ -20,11 +29,24 @@ export default function Home() {
           Run graders against test cases
         </p>
       </header>
-      <Tabs active={activeTab} onChange={setActiveTab} />
-      <main className="flex-1 overflow-hidden">
+      <Tabs active={activeTab} onChange={setActiveTab} disabled={busy} />
+      <main className="flex-1 overflow-hidden relative">
         {activeTab === "dataset" && <DatasetTab />}
         {activeTab === "graders" && <GradersTab />}
         {activeTab === "experiment" && <ExperimentTab />}
+        {busy && (
+          <div
+            className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg)]/80"
+            aria-live="polite"
+            aria-busy="true"
+          >
+            <div
+              className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin"
+              aria-hidden
+            />
+            <p className="mt-3 text-sm text-[var(--muted)]">{busyMessage}</p>
+          </div>
+        )}
       </main>
     </div>
   );

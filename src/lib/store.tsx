@@ -62,6 +62,9 @@ interface StoreState {
   datasets: Dataset[];
   graders: Grader[];
   results: ExperimentResult[];
+  isHydrating: boolean;
+  isSaving: boolean;
+  isExperimentRunning: boolean;
 }
 
 interface StoreContextValue extends StoreState {
@@ -81,6 +84,7 @@ interface StoreContextValue extends StoreState {
   deleteGrader: (id: string) => Promise<void>;
 
   setResults: (results: ExperimentResult[]) => Promise<void>;
+  setExperimentRunning: (running: boolean) => void;
   getDataset: (id: string) => Dataset | undefined;
   getGrader: (id: string) => Grader | undefined;
 }
@@ -97,6 +101,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     datasets: [],
     graders: [],
     results: [],
+    isHydrating: true,
+    isSaving: false,
+    isExperimentRunning: false,
   });
   const loadedRef = useRef(false);
   const stateRef = useRef(state);
@@ -105,62 +112,88 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     if (loadedRef.current) return;
     loadedRef.current = true;
-    loadFromDb().then((data) => setState(data));
+    loadFromDb().then((data) =>
+      setState((prev) => ({ ...prev, ...data, isHydrating: false }))
+    );
+  }, []);
+
+  const setSaving = useCallback((saving: boolean) => {
+    setState((prev) => ({ ...prev, isSaving: saving }));
   }, []);
 
   const addDataset = useCallback(async (name: string) => {
-    const dataset: Dataset = {
-      id: genId(),
-      name,
-      testCases: [],
-    };
-    const s = stateRef.current;
-    const next = { ...s, datasets: [...s.datasets, dataset] };
-    await persistToDb(next);
-    setState(next);
-    return dataset;
-  }, []);
+    setSaving(true);
+    try {
+      const dataset: Dataset = {
+        id: genId(),
+        name,
+        testCases: [],
+      };
+      const s = stateRef.current;
+      const next = { ...s, datasets: [...s.datasets, dataset] };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      return dataset;
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const updateDataset = useCallback(async (id: string, updates: Partial<Dataset>) => {
-    const s = stateRef.current;
-    const next = {
-      ...s,
-      datasets: s.datasets.map((d) =>
-        d.id === id ? { ...d, ...updates } : d
-      ),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const s = stateRef.current;
+      const next = {
+        ...s,
+        datasets: s.datasets.map((d) =>
+          d.id === id ? { ...d, ...updates } : d
+        ),
+      };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const deleteDataset = useCallback(async (id: string) => {
-    const s = stateRef.current;
-    const ds = s.datasets.find((d) => d.id === id);
-    const next = {
-      ...s,
-      datasets: s.datasets.filter((d) => d.id !== id),
-      results: s.results.filter((r) =>
-        ds ? !ds.testCases.some((tc) => tc.id === r.testCaseId) : true
-      ),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const s = stateRef.current;
+      const ds = s.datasets.find((d) => d.id === id);
+      const next = {
+        ...s,
+        datasets: s.datasets.filter((d) => d.id !== id),
+        results: s.results.filter((r) =>
+          ds ? !ds.testCases.some((tc) => tc.id === r.testCaseId) : true
+        ),
+      };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const addTestCase = useCallback(async (datasetId: string, testCase: Omit<TestCase, "id">) => {
-    const tc: TestCase = { ...testCase, id: genId() };
-    const s = stateRef.current;
-    const next = {
-      ...s,
-      datasets: s.datasets.map((d) =>
-        d.id === datasetId
-          ? { ...d, testCases: [...d.testCases, tc] }
-          : d
-      ),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const tc: TestCase = { ...testCase, id: genId() };
+      const s = stateRef.current;
+      const next = {
+        ...s,
+        datasets: s.datasets.map((d) =>
+          d.id === datasetId
+            ? { ...d, testCases: [...d.testCases, tc] }
+            : d
+        ),
+      };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const updateTestCase = useCallback(
     async (
@@ -168,6 +201,34 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       testCaseId: string,
       updates: Partial<TestCase>
     ) => {
+      setSaving(true);
+      try {
+        const s = stateRef.current;
+        const next = {
+          ...s,
+          datasets: s.datasets.map((d) =>
+            d.id === datasetId
+              ? {
+                  ...d,
+                  testCases: d.testCases.map((tc) =>
+                    tc.id === testCaseId ? { ...tc, ...updates } : tc
+                  ),
+                }
+              : d
+          ),
+        };
+        await persistToDb(next);
+        setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      } finally {
+        setSaving(false);
+      }
+    },
+    [setSaving]
+  );
+
+  const deleteTestCase = useCallback(async (datasetId: string, testCaseId: string) => {
+    setSaving(true);
+    try {
       const s = stateRef.current;
       const next = {
         ...s,
@@ -175,73 +236,80 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           d.id === datasetId
             ? {
                 ...d,
-                testCases: d.testCases.map((tc) =>
-                  tc.id === testCaseId ? { ...tc, ...updates } : tc
-                ),
+                testCases: d.testCases.filter((tc) => tc.id !== testCaseId),
               }
             : d
         ),
+        results: s.results.filter((r) => r.testCaseId !== testCaseId),
       };
       await persistToDb(next);
-      setState(next);
-    },
-    []
-  );
-
-  const deleteTestCase = useCallback(async (datasetId: string, testCaseId: string) => {
-    const s = stateRef.current;
-    const next = {
-      ...s,
-      datasets: s.datasets.map((d) =>
-        d.id === datasetId
-          ? {
-              ...d,
-              testCases: d.testCases.filter((tc) => tc.id !== testCaseId),
-            }
-          : d
-      ),
-      results: s.results.filter((r) => r.testCaseId !== testCaseId),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const addGrader = useCallback(async (grader: Omit<Grader, "id">) => {
-    const g: Grader = { ...grader, id: genId() };
-    const s = stateRef.current;
-    const next = { ...s, graders: [...s.graders, g] };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const g: Grader = { ...grader, id: genId() };
+      const s = stateRef.current;
+      const next = { ...s, graders: [...s.graders, g] };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const updateGrader = useCallback(async (id: string, updates: Partial<Grader>) => {
-    const s = stateRef.current;
-    const next = {
-      ...s,
-      graders: s.graders.map((g) =>
-        g.id === id ? { ...g, ...updates } : g
-      ),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const s = stateRef.current;
+      const next = {
+        ...s,
+        graders: s.graders.map((g) =>
+          g.id === id ? { ...g, ...updates } : g
+        ),
+      };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const deleteGrader = useCallback(async (id: string) => {
-    const s = stateRef.current;
-    const next = {
-      ...s,
-      graders: s.graders.filter((g) => g.id !== id),
-      results: s.results.filter((r) => r.graderId !== id),
-    };
-    await persistToDb(next);
-    setState(next);
-  }, []);
+    setSaving(true);
+    try {
+      const s = stateRef.current;
+      const next = {
+        ...s,
+        graders: s.graders.filter((g) => g.id !== id),
+        results: s.results.filter((r) => r.graderId !== id),
+      };
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
 
   const setResults = useCallback(async (results: ExperimentResult[]) => {
-    const s = stateRef.current;
-    const next = { ...s, results };
-    setState(next);
-    await persistToDb(next);
+    setSaving(true);
+    try {
+      const s = stateRef.current;
+      const next = { ...s, results };
+      setState((prev) => ({ ...prev, ...next }));
+      await persistToDb(next);
+      setState((prev) => ({ ...prev, isSaving: false }));
+    } finally {
+      setSaving(false);
+    }
+  }, [setSaving]);
+
+  const setExperimentRunning = useCallback((running: boolean) => {
+    setState((prev) => ({ ...prev, isExperimentRunning: running }));
   }, []);
 
   const getDataset = useCallback(
@@ -267,6 +335,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateGrader,
       deleteGrader,
       setResults,
+      setExperimentRunning,
       getDataset,
       getGrader,
     }),
@@ -282,6 +351,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       updateGrader,
       deleteGrader,
       setResults,
+      setExperimentRunning,
       getDataset,
       getGrader,
     ]

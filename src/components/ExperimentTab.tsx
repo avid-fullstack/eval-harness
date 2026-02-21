@@ -19,6 +19,7 @@ export function ExperimentTab() {
     getDataset,
     getGrader,
     setResults,
+    setExperimentRunning,
   } = useStore();
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedGraderIds, setSelectedGraderIds] = useState<Set<string>>(new Set());
@@ -43,6 +44,7 @@ export function ExperimentTab() {
   const runExperiment = async () => {
     if (!selectedDataset || selectedGraderIds.size === 0) return;
     setRunning(true);
+    setExperimentRunning(true);
     try {
       const newResults: ExperimentResult[] = [];
       for (const tc of selectedDataset.testCases) {
@@ -95,6 +97,7 @@ export function ExperimentTab() {
       await setResults(newResults);
     } finally {
       setRunning(false);
+      setExperimentRunning(false);
     }
   };
 
