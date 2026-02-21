@@ -23,7 +23,7 @@ Open [http://localhost:3000](http://localhost:3000).
 ### Environment
 
 - **`DATABASE_URL`** (optional but recommended): PostgreSQL connection string. If set, data is persisted; tables are created automatically on first load. If not set, save operations will show an error asking you to set `DATABASE_URL`.
-- **`OPENAI_API_KEY`** (optional): When set, the grade API uses a **generate-then-grade** flow (see below). Without it, a mock grader is used.
+- **`OPENROUTER_API_KEY`** (optional): When set, the grade API uses **OpenRouter** for a **generate-then-grade** flow (see below). Without it, a mock grader is used. Optional **`OPENROUTER_MODEL`** overrides the default model (`openai/gpt-oss-120b:free`).
 
 ### Using Supabase
 
@@ -68,9 +68,11 @@ Tests cover the grade API (mock path), data API (mocked db), and Tabs component.
 
 ## AI-based grading
 
-Set `OPENAI_API_KEY` in `.env.local` to enable AI grading. The `/api/grade` route uses GPT-4o-mini in a **generate-then-grade** flow:
+Set `OPENROUTER_API_KEY` in `.env.local` to enable AI grading via [OpenRouter](https://openrouter.ai). The `/api/grade` route uses the OpenRouter API in a **generate-then-grade** flow:
 
-1. **Generate**: The model produces an answer from the test case input.
-2. **Grade**: The model compares expected output vs generated output against the rubric and returns pass/fail, reason, and (when generated) the model output.
+1. **Generate**: A chat completion request sends the test case input; the model’s reply is used as the generated output.
+2. **Grade**: A second request sends the rubric and expected vs actual output; the model returns JSON with pass/fail and reason.
+
+Default model is `openai/gpt-oss-120b:free`. Override with `OPENROUTER_MODEL` (e.g. `anthropic/claude-3-haiku`).
 
 Without the API key, a mock grader runs (no generation; pass/fail based on whether input and expected output are non-empty).
