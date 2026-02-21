@@ -1,5 +1,5 @@
 /**
- * Tests for the grade API. Mock path (no OPENROUTER_API_KEY): validates input/expected_output.
+ * Tests for the grade API. Mock path (no OPENAI_API_KEY): validates input/expected_output.
  * @jest-environment node
  */
 
@@ -15,14 +15,14 @@ async function grade(body: { input?: string; expected_output?: string; rubric?: 
 }
 
 describe("POST /api/grade", () => {
-  const origEnv = process.env.OPENROUTER_API_KEY;
+  const origEnv = process.env.OPENAI_API_KEY;
 
   beforeAll(() => {
-    delete process.env.OPENROUTER_API_KEY;
+    delete process.env.OPENAI_API_KEY;
   });
 
   afterAll(() => {
-    if (origEnv !== undefined) process.env.OPENROUTER_API_KEY = origEnv;
+    if (origEnv !== undefined) process.env.OPENAI_API_KEY = origEnv;
   });
 
   it("returns pass when input and expected_output are non-empty", async () => {
