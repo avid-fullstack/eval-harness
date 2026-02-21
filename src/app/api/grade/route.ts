@@ -8,7 +8,7 @@ interface GradeRequest {
   expected_output: string;
   rubric: string;
   graderName?: string;
-  /** If omitted and AI available: generate from input, then grade expected vs generated. */
+  /** If omitted and AI available: generate from input (this becomes the correct answer for grading). */
   actual_output?: string;
 }
 
@@ -37,7 +37,7 @@ async function openaiChat(
   return typeof content === "string" ? content : "";
 }
 
-// POST /api/grade — Generate-then-grade: generate answer from input, then grade expected vs generated. When actual_output is provided, only grade.
+// POST /api/grade — Generate correct answer (actual_output) from input, then evaluate whether user's expected_output passes or fails against that correct answer and the rubric.
 export async function POST(req: Request) {
   try {
     const body: GradeRequest = await req.json();
@@ -68,27 +68,32 @@ export async function POST(req: Request) {
     const outputToGrade = actual_output;
 
     const systemPrompt =
-      `You are an evaluation assistant. Compare the actual output to the expected output. Reply only with valid JSON in this exact format:
-{"pass": true|false, "reason": "..."}
+      `You are an evaluation assistant. Your job is to evaluate whether the EXPECTED OUTPUT (user-provided) passes or fails.
+
+The CORRECT ANSWER is the actual_output (the generated answer). The user gave an expected_output. You must decide: does the expected_output pass or fail when judged against the correct answer and the rubric?
+
+Reply only with valid JSON in this exact form (no other text):
+{"pass": true|false, "reason": "one short sentence here"}
 
 Rules:
-- pass: true only when the actual output matches or satisfies the expected output according to the rubric.
-- reason: use this style so all evaluations are consistent:
-  - If pass: use exactly "Matches expected."
-  - If fail because the actual answer does not match expected (wrong answer): "The correct answer is [actual output], but the expected_output was given [expected output]."
-  - If fail because the answer matches expected but does not satisfy the rubric (e.g. format, strictness): "The expected_output is failed because [brief reason from rubric]."
+- pass: true when the expected_output (user's answer) is acceptable: it matches or satisfies the correct answer (actual_output) according to the rubric. If they are the same or semantically equivalent, pass. Do not fail when they match.
+- fail: when the expected_output is wrong (does not match the correct answer) or does not meet the rubric (e.g. format, completeness). Do not fail for verbosity when the expected_output is already short (one word, one number, one short sentence).
+- reason: one short sentence. No double-quotes or backslashes inside the reason (use only letters, numbers, periods, commas).
+  - If pass: "Matches correct answer."
+  - If fail (wrong answer): "The correct answer is [actual_output], but the expected_output was given [expected_output]."
+  - If fail (rubric only): "The expected_output is failed because [brief reason]."
 
 Rubric:
 ${rubric || "Evaluate correctness and completeness."}`;
 
     const userPrompt =
-      `Input: ${input ?? "(none)"}
+      `Input (question): ${input ?? "(none)"}
 
-Expected output: ${expected_output ?? "(none)"}
+Correct answer (generated): ${outputToGrade ?? "(none)"}
 
-Actual output to grade: ${outputToGrade ?? "(none)"}
+Expected output (user-provided, to evaluate): ${expected_output ?? "(none)"}
 
-Does the actual output match or satisfy the expected output according to the rubric? Reply with JSON only.`;
+Does the expected_output pass or fail when judged against the correct answer and the rubric? Reply with JSON only.`;
 
     const text = await openaiChat([
       { role: "system", content: systemPrompt },
@@ -96,7 +101,22 @@ Does the actual output match or satisfy the expected output according to the rub
     ]);
 
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    const parsed = jsonMatch ? JSON.parse(jsonMatch[0]) : null;
+    let parsed: { pass?: boolean; reason?: string } | null = null;
+    if (jsonMatch) {
+      try {
+        parsed = JSON.parse(jsonMatch[0]) as { pass?: boolean; reason?: string };
+      } catch {
+        // JSON parse can fail on escaped characters in the reason string; try to extract pass and reason manually
+        const passMatch = jsonMatch[0].match(/"pass"\s*:\s*(true|false)/i);
+        const reasonMatch = jsonMatch[0].match(/"reason"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+        if (passMatch && reasonMatch) {
+          parsed = {
+            pass: passMatch[1].toLowerCase() === "true",
+            reason: reasonMatch[1].replace(/\\"/g, '"').trim(),
+          };
+        }
+      }
+    }
 
     if (parsed && typeof parsed.pass === "boolean" && typeof parsed.reason === "string") {
       const res: { pass: boolean; reason: string; generated_output?: string } = {
