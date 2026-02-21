@@ -49,24 +49,42 @@ export function ExperimentTab() {
         for (const graderId of Array.from(selectedGraderIds)) {
           const grader = getGrader(graderId);
           if (!grader) continue;
-          const res = await fetch("/api/grade", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              input: tc.input,
-              expected_output: tc.expected_output,
-              rubric: grader.rubric,
-              graderName: grader.name,
-            }),
-          });
-          const data = await res.json();
-          if (res.ok) {
+          try {
+            const res = await fetch("/api/grade", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                input: tc.input,
+                expected_output: tc.expected_output,
+                rubric: grader.rubric,
+                graderName: grader.name,
+              }),
+            });
+            const data = await res.json();
+            if (res.ok) {
+              newResults.push({
+                testCaseId: tc.id,
+                graderId,
+                pass: data.pass,
+                reason: data.reason ?? "",
+                ...(data.generated_output !== undefined && { generated_output: data.generated_output }),
+              });
+            } else {
+              // API returned error (e.g. 500); record as fail so the run completes and the cell shows the reason.
+              newResults.push({
+                testCaseId: tc.id,
+                graderId,
+                pass: false,
+                reason: data?.reason ?? data?.error ?? `Request failed (${res.status})`,
+              });
+            }
+          } catch (e) {
+            // Catch network errors or res.json() failures for this single call; record as fail and continue the loop.
             newResults.push({
               testCaseId: tc.id,
               graderId,
-              pass: data.pass,
-              reason: data.reason ?? "",
-              ...(data.generated_output !== undefined && { generated_output: data.generated_output }),
+              pass: false,
+              reason: e instanceof Error ? e.message : "Request failed",
             });
           }
         }

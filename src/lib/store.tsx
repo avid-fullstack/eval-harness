@@ -13,38 +13,49 @@ import type { Dataset, ExperimentResult, Grader, TestCase } from "./types";
 
 const API_DATA = "/api/data";
 
-// Fetching datasets, graders, and results from the API on app load.
+// Fetch datasets, graders, and results from GET /api/data on app load. Returns empty state on any failure.
 async function loadFromDb(): Promise<{
   datasets: Dataset[];
   graders: Grader[];
   results: ExperimentResult[];
 }> {
-  const res = await fetch(API_DATA);
-  if (!res.ok) return { datasets: [], graders: [], results: [] };
-  const data = await res.json();
-  return {
-    datasets: data.datasets ?? [],
-    graders: data.graders ?? [],
-    results: data.results ?? [],
-  };
+  try {
+    const res = await fetch(API_DATA);
+    if (!res.ok) return { datasets: [], graders: [], results: [] };
+    const data = await res.json();
+    return {
+      datasets: data.datasets ?? [],
+      graders: data.graders ?? [],
+      results: data.results ?? [],
+    };
+  } catch (e) {
+    // Catch network errors or res.json() failures (e.g. invalid response) so the app can still mount with empty state.
+    console.error("Load from API failed:", e);
+    return { datasets: [], graders: [], results: [] };
+  }
 }
 
-// Persisting state to the API. Returns a promise so callers can await and keep DB in sync.
-function persistToDb(state: {
+// POST full state to /api/data. Returns a promise so callers can await; throws on non-ok response or network error.
+async function persistToDb(state: {
   datasets: Dataset[];
   graders: Grader[];
   results: ExperimentResult[];
 }): Promise<void> {
-  return fetch(API_DATA, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(state),
-  }).then(async (res) => {
+  try {
+    const res = await fetch(API_DATA, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state),
+    });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data?.error ?? "Failed to save");
     }
-  });
+  } catch (e) {
+    // Catch network errors or non-ok response; log and rethrow so the store mutation can show an error in the UI.
+    console.error("Persist to API failed:", e);
+    throw e;
+  }
 }
 
 interface StoreState {

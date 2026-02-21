@@ -22,8 +22,23 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Environment
 
-- **`DATABASE_URL`** (optional but recommended): PostgreSQL connection string (e.g. `postgresql://user:password@localhost:5432/eval_harness`). If set, data is persisted; tables are created automatically. If not set, save operations (add/edit/delete dataset, grader, or run results) will show an error asking you to set `DATABASE_URL`.
+- **`DATABASE_URL`** (optional but recommended): PostgreSQL connection string. If set, data is persisted; tables are created automatically on first load. If not set, save operations will show an error asking you to set `DATABASE_URL`.
 - **`OPENAI_API_KEY`** (optional): When set, the grade API uses a **generate-then-grade** flow (see below). Without it, a mock grader is used.
+
+### Using Supabase
+
+The app uses standard PostgreSQL (`pg`), so Supabase works without code changes.
+
+1. In the [Supabase Dashboard](https://supabase.com/dashboard), open your project (or create one).
+2. Go to **Project Settings** → **Database**.
+3. Under **Connection string**, choose **URI** and copy the connection string.
+4. For Next.js (serverless API routes), use the **Session mode** (port **6543**) connection string so Supabase’s connection pooler is used and you avoid “too many connections.” If you see both “Direct connection” and “Session pooler,” use the Session pooler URI.
+5. Replace the placeholder `[YOUR-PASSWORD]` in the URI with your database password (the one you set when creating the project, or reset it in **Database** → **Database password**).
+6. Put the final URL in `.env.local`:
+   ```env
+   DATABASE_URL=postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
+   ```
+7. Restart the dev server (`npm run dev`). Tables are created automatically when the app first loads or saves data.
 
 ### Tests
 

@@ -15,7 +15,7 @@ function useAiGrading(): boolean {
   return !!process.env.OPENAI_API_KEY;
 }
 
-// Generate-then-grade: generate answer from input, then grade expected vs generated. When actual_output is provided, only grade.
+// POST /api/grade — Generate-then-grade: generate answer from input, then grade expected vs generated. When actual_output is provided, only grade.
 export async function POST(req: Request) {
   try {
     const body: GradeRequest = await req.json();
@@ -47,24 +47,26 @@ export async function POST(req: Request) {
 
     const outputToGrade = actual_output;
 
-    const systemPrompt = `You are an evaluation assistant. Grade the response against the rubric. Reply only with valid JSON in this exact format:
-{"pass": true|false, "reason": "brief explanation"}
-
-Rules for "reason":
-- When failing: state the core issue in one short, factual sentence (e.g. what is wrong or what the correct answer is). Do not preface with "The expected output is incorrect" or rubric-specific wording—just the issue itself.
-- When passing: one short sentence (e.g. "Correct." or "Matches expected.").
-- Keep the reason consistent and reusable across different rubrics.
-
-Rubric:
-${rubric || "Evaluate correctness and completeness."}`;
-
-    const userPrompt = `Input: ${input ?? "(none)"}
-
-Expected output: ${expected_output ?? "(none)"}
-
-Actual output to grade: ${outputToGrade ?? "(none)"}
-
-Does the actual output satisfy the expected output according to the rubric? Reply with JSON only.`;
+    const systemPrompt = 
+    `You are an evaluation assistant. Grade the response against the rubric. Reply only with valid JSON in this exact format:
+    {"pass": true|false, "reason": "brief explanation"}
+    
+    Rules for "reason":
+    - When failing: state the core issue in one short, factual sentence (e.g. what is wrong or what the correct answer is). Do not preface with "The expected output is incorrect" or rubric-specific wording—just the issue itself.
+    - When passing: one short sentence (e.g. "Correct." or "Matches expected.").
+    - Keep the reason consistent and reusable across different rubrics.
+    
+    Rubric:
+    ${rubric || "Evaluate correctness and completeness."}`;
+    
+    const userPrompt = 
+    `Input: ${input ?? "(none)"}
+    
+    Expected output: ${expected_output ?? "(none)"}
+    
+    Actual output to grade: ${outputToGrade ?? "(none)"}
+    
+    Does the actual output satisfy the expected output according to the rubric? Reply with JSON only.`;
 
     const { text } = await generateText({
       model,
@@ -92,6 +94,7 @@ Does the actual output satisfy the expected output according to the rubric? Repl
     if (actual_output !== undefined && providedOutput === undefined) fallback.generated_output = actual_output;
     return NextResponse.json(fallback);
   } catch (e) {
+    // Catch req.json(), generateText(), or JSON parse failures and return 500 with pass: false and reason.
     console.error("Grade API error:", e);
     return NextResponse.json(
       {
