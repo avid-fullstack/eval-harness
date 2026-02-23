@@ -15,6 +15,7 @@ export function DatasetTab() {
     addTestCase,
     updateTestCase,
     deleteTestCase,
+    savingTab,
   } = useStore();
 
   const [selectedId, setSelectedId] = useState<string | null>(
@@ -22,42 +23,47 @@ export function DatasetTab() {
   );
   const [editingRow, setEditingRow] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  const saving = savingTab === "dataset";
 
   const selected = datasets.find((d) => d.id === selectedId) ?? datasets[0];
 
   const handleAddDataset = async () => {
     const name = newName.trim() || "New Dataset";
     setError(null);
-    setSaving(true);
     try {
       const ds = await addDataset(name);
       setSelectedId(ds.id);
       setNewName("");
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to save");
-    } finally {
-      setSaving(false);
     }
   };
 
   const handleDeleteDataset = async () => {
     if (!selected) return;
     setError(null);
-    setSaving(true);
     try {
       await deleteDataset(selected.id);
       setSelectedId(datasets.find((d) => d.id !== selected.id)?.id ?? null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to delete");
-    } finally {
-      setSaving(false);
     }
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {saving && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg)]/80"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin" aria-hidden />
+          <p className="mt-3 text-sm text-[var(--muted)]">Saving…</p>
+        </div>
+      )}
       <div className="flex items-center gap-3 p-4 border-b border-[var(--border)]">
         <select
           value={selected?.id ?? ""}
@@ -126,26 +132,20 @@ export function DatasetTab() {
                       onEdit={() => setEditingRow(tc.id)}
                       onSave={async (updates) => {
                         setError(null);
-                        setSaving(true);
                         try {
                           await updateTestCase(selected.id, tc.id, updates);
                           setEditingRow(null);
                         } catch (e) {
                           setError(e instanceof Error ? e.message : "Failed to save");
-                        } finally {
-                          setSaving(false);
                         }
                       }}
                       onCancel={() => setEditingRow(null)}
                       onDelete={async () => {
                         setError(null);
-                        setSaving(true);
                         try {
                           await deleteTestCase(selected.id, tc.id);
                         } catch (e) {
                           setError(e instanceof Error ? e.message : "Failed to delete");
-                        } finally {
-                          setSaving(false);
                         }
                       }}
                     />
@@ -153,13 +153,10 @@ export function DatasetTab() {
                   <AddRow
                     onAdd={async (tc) => {
                       setError(null);
-                      setSaving(true);
                       try {
                         await addTestCase(selected.id, tc);
                       } catch (e) {
                         setError(e instanceof Error ? e.message : "Failed to save");
-                      } finally {
-                        setSaving(false);
                       }
                     }}
                     disabled={saving}

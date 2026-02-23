@@ -7,14 +7,24 @@ import { useStore } from "@/lib/store";
 import type { Grader } from "@/lib/types";
 
 export function GradersTab() {
-  const { graders, addGrader, updateGrader, deleteGrader } = useStore();
+  const { graders, addGrader, updateGrader, deleteGrader, savingTab } = useStore();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [showAdd, setShowAdd] = useState(false);
-  const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const saving = savingTab === "graders";
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {saving && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg)]/80"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin" aria-hidden />
+          <p className="mt-3 text-sm text-[var(--muted)]">Saving…</p>
+        </div>
+      )}
       <div className="flex items-center justify-between p-4 border-b border-[var(--border)]">
         <h2 className="text-lg font-medium">Grader definitions</h2>
         <button
@@ -39,26 +49,20 @@ export function GradersTab() {
             onEdit={() => setEditingId(grader.id)}
             onSave={async (updates) => {
               setError(null);
-              setSaving(true);
               try {
                 await updateGrader(grader.id, updates);
                 setEditingId(null);
               } catch (e) {
                 setError(e instanceof Error ? e.message : "Failed to save");
-              } finally {
-                setSaving(false);
               }
             }}
             onCancel={() => setEditingId(null)}
             onDelete={async () => {
               setError(null);
-              setSaving(true);
               try {
                 await deleteGrader(grader.id);
               } catch (e) {
                 setError(e instanceof Error ? e.message : "Failed to delete");
-              } finally {
-                setSaving(false);
               }
             }}
           />
@@ -70,7 +74,6 @@ export function GradersTab() {
             disabled={saving}
             onSave={async (updates) => {
               setError(null);
-              setSaving(true);
               try {
                 await addGrader({
                   name: updates.name ?? "",
@@ -80,8 +83,6 @@ export function GradersTab() {
                 setShowAdd(false);
               } catch (e) {
                 setError(e instanceof Error ? e.message : "Failed to save");
-              } finally {
-                setSaving(false);
               }
             }}
             onCancel={() => setShowAdd(false)}

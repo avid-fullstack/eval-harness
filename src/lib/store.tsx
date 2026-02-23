@@ -65,6 +65,10 @@ interface StoreState {
   isHydrating: boolean;
   isSaving: boolean;
   isExperimentRunning: boolean;
+  /** True while a results-save is in progress. Run button is disabled until it clears (clear contract, avoid overlapping runs). */
+  isSavingResults: boolean;
+  /** Which tab is saving (for tab-local spinner). Tabs stay switchable. */
+  savingTab: "dataset" | "graders" | null;
 }
 
 interface StoreContextValue extends StoreState {
@@ -104,10 +108,13 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     isHydrating: true,
     isSaving: false,
     isExperimentRunning: false,
+    isSavingResults: false,
+    savingTab: null,
   });
   const loadedRef = useRef(false);
   const stateRef = useRef(state);
   stateRef.current = state;
+  const saveResultsIdRef = useRef(0);
 
   useEffect(() => {
     if (loadedRef.current) return;
@@ -117,12 +124,12 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     );
   }, []);
 
-  const setSaving = useCallback((saving: boolean) => {
-    setState((prev) => ({ ...prev, isSaving: saving }));
+  const setSaving = useCallback((saving: boolean, tab: "dataset" | "graders" | null = null) => {
+    setState((prev) => ({ ...prev, isSaving: saving, savingTab: saving ? tab : null }));
   }, []);
 
   const addDataset = useCallback(async (name: string) => {
-    setSaving(true);
+    setSaving(true, "dataset");
     try {
       const dataset: Dataset = {
         id: genId(),
@@ -132,15 +139,15 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       const s = stateRef.current;
       const next = { ...s, datasets: [...s.datasets, dataset] };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
       return dataset;
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const updateDataset = useCallback(async (id: string, updates: Partial<Dataset>) => {
-    setSaving(true);
+    setSaving(true, "dataset");
     try {
       const s = stateRef.current;
       const next = {
@@ -150,14 +157,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const deleteDataset = useCallback(async (id: string) => {
-    setSaving(true);
+    setSaving(true, "dataset");
     try {
       const s = stateRef.current;
       const ds = s.datasets.find((d) => d.id === id);
@@ -169,14 +176,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const addTestCase = useCallback(async (datasetId: string, testCase: Omit<TestCase, "id">) => {
-    setSaving(true);
+    setSaving(true, "dataset");
     try {
       const tc: TestCase = { ...testCase, id: genId() };
       const s = stateRef.current;
@@ -189,9 +196,9 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
@@ -201,7 +208,7 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
       testCaseId: string,
       updates: Partial<TestCase>
     ) => {
-      setSaving(true);
+      setSaving(true, "dataset");
       try {
         const s = stateRef.current;
         const next = {
@@ -218,16 +225,16 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
           ),
         };
         await persistToDb(next);
-        setState((prev) => ({ ...prev, ...next, isSaving: false }));
+        setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
       } finally {
-        setSaving(false);
+        setSaving(false, null);
       }
     },
     [setSaving]
   );
 
   const deleteTestCase = useCallback(async (datasetId: string, testCaseId: string) => {
-    setSaving(true);
+    setSaving(true, "dataset");
     try {
       const s = stateRef.current;
       const next = {
@@ -243,27 +250,27 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         results: s.results.filter((r) => r.testCaseId !== testCaseId),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const addGrader = useCallback(async (grader: Omit<Grader, "id">) => {
-    setSaving(true);
+    setSaving(true, "graders");
     try {
       const g: Grader = { ...grader, id: genId() };
       const s = stateRef.current;
       const next = { ...s, graders: [...s.graders, g] };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const updateGrader = useCallback(async (id: string, updates: Partial<Grader>) => {
-    setSaving(true);
+    setSaving(true, "graders");
     try {
       const s = stateRef.current;
       const next = {
@@ -273,14 +280,14 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         ),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
   const deleteGrader = useCallback(async (id: string) => {
-    setSaving(true);
+    setSaving(true, "graders");
     try {
       const s = stateRef.current;
       const next = {
@@ -289,23 +296,29 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
         results: s.results.filter((r) => r.graderId !== id),
       };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false, savingTab: null }));
     } finally {
-      setSaving(false);
+      setSaving(false, null);
     }
   }, [setSaving]);
 
+  // Async persist; Run button stays disabled until this save completes (clear contract: one save at a time).
+  // Last-write-wins: if a newer setResults runs before this persist completes, we discard this result; only the latest clears isSavingResults.
   const setResults = useCallback(async (results: ExperimentResult[]) => {
-    setSaving(true);
+    const saveId = ++saveResultsIdRef.current;
+    const s = stateRef.current;
+    const next = { ...s, results };
+    setState((prev) => ({ ...prev, isSavingResults: true }));
     try {
-      const s = stateRef.current;
-      const next = { ...s, results };
       await persistToDb(next);
-      setState((prev) => ({ ...prev, ...next, isSaving: false }));
-    } finally {
-      setSaving(false);
+      if (saveResultsIdRef.current !== saveId) return; // newer save took over; it will clear isSavingResults
+      setState((prev) => ({ ...prev, ...next, isSavingResults: false }));
+    } catch (e) {
+      if (saveResultsIdRef.current !== saveId) return;
+      console.error("Persist results failed:", e);
+      setState((prev) => ({ ...prev, isSavingResults: false }));
     }
-  }, [setSaving]);
+  }, []);
 
   const setExperimentRunning = useCallback((running: boolean) => {
     setState((prev) => ({ ...prev, isExperimentRunning: running }));

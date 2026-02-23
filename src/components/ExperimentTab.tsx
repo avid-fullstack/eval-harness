@@ -20,6 +20,7 @@ export function ExperimentTab() {
     getGrader,
     setResults,
     setExperimentRunning,
+    isSavingResults,
   } = useStore();
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [selectedGraderIds, setSelectedGraderIds] = useState<Set<string>>(new Set());
@@ -120,11 +121,11 @@ export function ExperimentTab() {
         }
       }
 
-      // All evaluations done: update local UI state, then save full result set once to the DB.
+      // All evaluations done: update UI immediately; persist in background (last-write-wins if user runs again).
       setRunResults(newResults);
       setLastRunDatasetId(selectedDatasetId);
       setLastRunGraderIds(new Set(selectedGraderIds));
-      await setResults(newResults);
+      void setResults(newResults);
     } finally {
       setRunning(false);
       setExperimentRunning(false);
@@ -138,7 +139,17 @@ export function ExperimentTab() {
     sameGraderSet(selectedGraderIds, lastRunGraderIds);
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full relative">
+      {running && (
+        <div
+          className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg)]/80"
+          aria-live="polite"
+          aria-busy="true"
+        >
+          <div className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin" aria-hidden />
+          <p className="mt-3 text-sm text-[var(--muted)]">Running experiment…</p>
+        </div>
+      )}
       <div className="p-4 border-b border-[var(--border)] space-y-4">
         <div className="flex flex-wrap items-center gap-4">
           <div>
@@ -182,12 +193,15 @@ export function ExperimentTab() {
           <button
             onClick={runExperiment}
             disabled={
-              running || !selectedDataset || selectedGraderIds.size === 0
+              running ||
+              isSavingResults ||
+              !selectedDataset ||
+              selectedGraderIds.size === 0
             }
             className="flex items-center gap-2 px-4 py-2 rounded bg-[var(--accent)] text-[var(--bg)] font-medium hover:bg-[var(--accent-dim)] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
           >
             <Play size={16} />
-            {running ? "Running…" : "Run"}
+            {running ? "Running…" : isSavingResults ? "Saving…" : "Run"}
           </button>
         </div>
       </div>
@@ -373,6 +387,17 @@ function ExportButton({
   };
 
   const downloadCsv = () => {
+    const stats = graders.map((g) => {
+      const graderResults = results.filter((r) => r.graderId === g.id);
+      const passCount = graderResults.filter((r) => r.pass).length;
+      const total = graderResults.length;
+      const rate = total > 0 ? ((passCount / total) * 100).toFixed(1) : "0";
+      return [escapeCsv(g.name), String(passCount), String(total), `${rate}%`];
+    });
+    const overviewHeader = "grader_name,pass_count,total,pass_rate_pct";
+    const overviewRows = stats.map((row) => row.join(","));
+    const overviewBlock = ["Overview - Pass rate per grader", overviewHeader, ...overviewRows, ""].join("\r\n");
+
     const headers = ["input", "expected_output", ...graders.flatMap((g) => [`${g.name}_pass`, `${g.name}_reason`, `${g.name}_generated`])];
     const rows = dataset.testCases.map((tc) => {
       const row = [
@@ -385,7 +410,8 @@ function ExportButton({
       ];
       return row.join(",");
     });
-    const csv = [headers.join(","), ...rows].join("\r\n");
+    const detailBlock = [headers.join(","), ...rows].join("\r\n");
+    const csv = [overviewBlock, "Detail", detailBlock].join("\r\n");
     const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");

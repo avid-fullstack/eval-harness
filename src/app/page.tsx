@@ -12,14 +12,9 @@ type TabId = "dataset" | "graders" | "experiment";
 
 export default function Home() {
   const [activeTab, setActiveTab] = useState<TabId>("dataset");
-  const { isHydrating, isSaving, isExperimentRunning } = useStore();
-  const busy = isHydrating || isSaving || isExperimentRunning;
-
-  const busyMessage = isHydrating
-    ? "Loading…"
-    : isExperimentRunning
-      ? "Running experiment…"
-      : "Saving…";
+  const { isHydrating } = useStore();
+  // Tabs stay switchable during load and save; only the active tab's content shows a local spinner when that tab is saving/loading.
+  const tabsDisabled = false;
 
   return (
     <div className="h-screen flex flex-col bg-[var(--bg)]">
@@ -29,22 +24,26 @@ export default function Home() {
           Run graders against test cases
         </p>
       </header>
-      <Tabs active={activeTab} onChange={setActiveTab} disabled={busy} />
-      <main className="flex-1 overflow-hidden relative">
-        {activeTab === "dataset" && <DatasetTab />}
-        {activeTab === "graders" && <GradersTab />}
-        {activeTab === "experiment" && <ExperimentTab />}
-        {busy && (
+      <Tabs active={activeTab} onChange={setActiveTab} disabled={tabsDisabled} />
+      <main className="flex-1 overflow-hidden relative flex flex-col">
+        {/* Keep all tabs mounted and hide inactive with CSS so state (selections, form inputs) persists across tab switches (in-memory). */}
+        <div className={activeTab === "dataset" ? "flex-1 overflow-hidden flex flex-col h-full" : "hidden"}>
+          <DatasetTab />
+        </div>
+        <div className={activeTab === "graders" ? "flex-1 overflow-hidden flex flex-col h-full" : "hidden"}>
+          <GradersTab />
+        </div>
+        <div className={activeTab === "experiment" ? "flex-1 overflow-hidden flex flex-col h-full" : "hidden"}>
+          <ExperimentTab />
+        </div>
+        {isHydrating && (
           <div
             className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-[var(--bg)]/80"
             aria-live="polite"
             aria-busy="true"
           >
-            <div
-              className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin"
-              aria-hidden
-            />
-            <p className="mt-3 text-sm text-[var(--muted)]">{busyMessage}</p>
+            <div className="h-8 w-8 rounded-full border-2 border-[var(--border)] border-t-[var(--accent)] animate-spin" aria-hidden />
+            <p className="mt-3 text-sm text-[var(--muted)]">Loading…</p>
           </div>
         )}
       </main>

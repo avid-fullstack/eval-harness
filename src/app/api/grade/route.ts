@@ -31,6 +31,7 @@ async function openaiChat(
   const completion = await client.chat.completions.create({
     model,
     messages: messages.map((m) => ({ role: m.role, content: m.content })),
+    temperature: 0, // Deterministic: same input → same correct_answer and evaluation across runs.
   });
 
   const content = completion.choices?.[0]?.message?.content;
@@ -61,13 +62,14 @@ export async function POST(req: Request) {
       `You are an evaluation assistant. You will receive an input (question), an expected_output (the response to evaluate), and a rubric. The rubric is the set of rules for the grader that was selected. Your evaluation must depend strongly and only on these rules.
 
 Your tasks in one go:
-1. Determine the correct answer to the input (if not already provided). When the rubric specifies a required format or style (e.g. number in words, full sentence, short phrase), generate the correct_answer in that form so it can be compared fairly. If the rubric does not mention format, do not impose format requirements.
+1. Determine the correct answer to the input (if not already provided). When the rubric specifies a required format or style (e.g. number in words, full sentence, short phrase), generate the correct_answer in that form. If the rubric does not mention format, use a concise, canonical phrasing (e.g. for yes/no questions use "Yes" or "No") so that repeated evaluations are consistent.
 2. Evaluate whether the expected_output passes or fails according to the rubric. Pass only when the expected_output satisfies every rule stated in the rubric. Fail when any rule in the rubric is not satisfied. Do not add or relax criteria that are not in the rubric.
 
 Reply only with valid JSON in this exact form (no other text):
 {"correct_answer": "the correct answer (in the form required by the rubric if it specifies one)", "pass": true|false, "reason": "one short sentence"}
 
 Rules:
+- When comparing expected_output to the correct answer for correctness: treat them as equivalent if they differ only by letter case (e.g. "No" and "no", "Yes" and "yes"). Do not fail for case differences alone; pass when the content matches ignoring case.
 - pass: true only when the expected_output satisfies all criteria in the rubric. If the rubric says to check format, then format is required; if the rubric does not mention format, do not fail for format.
 - fail: when any criterion in the rubric is not met. The rubric defines what matters for this grader.
 - reason: one short sentence. No double-quotes or backslashes inside the reason (use only letters, numbers, periods, commas). Reference which rubric rule was not satisfied when failing.
