@@ -58,7 +58,7 @@ export function ExperimentTab() {
         }
       }
 
-      const RATE_LIMIT = 30;
+      const RATE_LIMIT = 40;
       const WINDOW_MS = 60_000;
       const newResults: ExperimentResult[] = [];
 
