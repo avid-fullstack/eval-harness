@@ -46,13 +46,28 @@ export function ExperimentTab() {
     setRunning(true);
     setExperimentRunning(true);
     try {
-      const newResults: ExperimentResult[] = [];
+      // Build flat list of (testCase, grader) tasks in same order as before.
+      type Task = { testCase: (typeof selectedDataset.testCases)[0]; graderId: string; grader: NonNullable<ReturnType<typeof getGrader>> };
+      const tasks: Task[] = [];
       for (const tc of selectedDataset.testCases) {
         for (const graderId of Array.from(selectedGraderIds)) {
           const grader = getGrader(graderId);
           if (!grader) continue;
-          try {
-            const res = await fetch("/api/grade", {
+          tasks.push({ testCase: tc, graderId, grader });
+        }
+      }
+
+      const RATE_LIMIT = 30;
+      const WINDOW_MS = 60_000;
+      const newResults: ExperimentResult[] = [];
+
+      for (let i = 0; i < tasks.length; i += RATE_LIMIT) {
+        const chunkStart = Date.now();
+        const chunk = tasks.slice(i, i + RATE_LIMIT);
+
+        const settled = await Promise.allSettled(
+          chunk.map(({ testCase: tc, graderId, grader }) =>
+            fetch("/api/grade", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify({
@@ -61,36 +76,51 @@ export function ExperimentTab() {
                 rubric: grader.rubric,
                 graderName: grader.name,
               }),
-            });
-            const data = await res.json();
-            if (res.ok) {
-              newResults.push({
-                testCaseId: tc.id,
-                graderId,
-                pass: data.pass,
-                reason: data.reason ?? "",
-                ...(data.generated_output !== undefined && { generated_output: data.generated_output }),
-              });
-            } else {
-              // API returned error (e.g. 500); record as fail so the run completes and the cell shows the reason.
-              newResults.push({
+            }).then(async (res) => {
+              const data = await res.json();
+              if (res.ok) {
+                return {
+                  testCaseId: tc.id,
+                  graderId,
+                  pass: data.pass,
+                  reason: data.reason ?? "",
+                  ...(data.generated_output !== undefined && { generated_output: data.generated_output }),
+                } as ExperimentResult;
+              }
+              return {
                 testCaseId: tc.id,
                 graderId,
                 pass: false,
                 reason: data?.reason ?? data?.error ?? `Request failed (${res.status})`,
-              });
-            }
-          } catch (e) {
-            // Catch network errors or res.json() failures for this single call; record as fail and continue the loop.
+              } as ExperimentResult;
+            })
+          )
+        );
+
+        for (let j = 0; j < settled.length; j++) {
+          const s = settled[j];
+          const task = chunk[j];
+          if (s.status === "fulfilled") {
+            newResults.push(s.value);
+          } else {
             newResults.push({
-              testCaseId: tc.id,
-              graderId,
+              testCaseId: task.testCase.id,
+              graderId: task.graderId,
               pass: false,
-              reason: e instanceof Error ? e.message : "Request failed",
+              reason: s.reason instanceof Error ? s.reason.message : "Request failed",
             });
           }
         }
+
+        // Enforce 30 requests per minute: wait until 60s from chunk start before next chunk.
+        if (i + RATE_LIMIT < tasks.length) {
+          const elapsed = Date.now() - chunkStart;
+          const wait = Math.max(0, WINDOW_MS - elapsed);
+          await new Promise((r) => setTimeout(r, wait));
+        }
       }
+
+      // All evaluations done: update local UI state, then save full result set once to the DB.
       setRunResults(newResults);
       setLastRunDatasetId(selectedDatasetId);
       setLastRunGraderIds(new Set(selectedGraderIds));

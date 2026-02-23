@@ -300,9 +300,8 @@ export function StoreProvider({ children }: { children: React.ReactNode }) {
     try {
       const s = stateRef.current;
       const next = { ...s, results };
-      setState((prev) => ({ ...prev, ...next }));
       await persistToDb(next);
-      setState((prev) => ({ ...prev, isSaving: false }));
+      setState((prev) => ({ ...prev, ...next, isSaving: false }));
     } finally {
       setSaving(false);
     }
