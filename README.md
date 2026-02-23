@@ -22,23 +22,9 @@ Open [http://localhost:3000](http://localhost:3000).
 
 ### Environment
 
-- **`DATABASE_URL`** (optional but recommended): PostgreSQL connection string. If set, data is persisted; tables are created automatically on first load. If not set, save operations will show an error asking you to set `DATABASE_URL`.
-- **`OPENAI_API_KEY`** (optional): When set, the grade API uses **OpenAI** for a **generate-then-grade** flow (see below). Without it, a mock grader is used. Optional **`OPENAI_MODEL`** overrides the default model (`gpt-4o-mini`).
-
-### Using Supabase
-
-The app uses standard PostgreSQL (`pg`), so Supabase works without code changes.
-
-1. In the [Supabase Dashboard](https://supabase.com/dashboard), open your project (or create one).
-2. Go to **Project Settings** → **Database**.
-3. Under **Connection string**, choose **URI** and copy the connection string.
-4. For Next.js (serverless API routes), use the **Session mode** (port **6543**) connection string so Supabase’s connection pooler is used and you avoid “too many connections.” If you see both “Direct connection” and “Session pooler,” use the Session pooler URI.
-5. Replace the placeholder `[YOUR-PASSWORD]` in the URI with your database password (the one you set when creating the project, or reset it in **Database** → **Database password**).
-6. Put the final URL in `.env.local`:
-   ```env
-   DATABASE_URL=postgresql://postgres.[ref]:[YOUR-PASSWORD]@aws-0-[region].pooler.supabase.com:6543/postgres
-   ```
-7. Restart the dev server (`npm run dev`). Tables are created automatically when the app first loads or saves data.
+- **`DATABASE_URL`** : PostgreSQL connection string. Set Database_URL as "postgres://postgres.ibaxchocsppkultdtypq:Supabase110@aws-0-us-west-2.pooler.supabase.com:5432/postgres"
+- **`OPENAI_API_KEY`** (required): When set, the grade API uses **OpenAI** for a **generate-then-grade** flow (see below). Without it, a mock evaluation is used.
+- **`OPENAI_MODEL`** (optional and not required): overrides the default model (`gpt-4o-mini`).
 
 ### Seeding mock data
 
@@ -75,4 +61,4 @@ Set `OPENAI_API_KEY` in `.env.local` to enable AI grading via [OpenAI](https://p
 
 Default model is `gpt-4o-mini`. Override with `OPENAI_MODEL` (e.g. `gpt-4o`).
 
-Without the API key, a mock grader runs (no generation; pass/fail based on whether input and expected output are non-empty).
+Without the API key, a mock evaluation runs (no generation; pass/fail based on whether input and expected output are non-empty).
